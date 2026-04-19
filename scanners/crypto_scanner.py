@@ -50,8 +50,9 @@ def run_crypto_scan(tb, om, sg, news_scraper):
                 
                 # Signal Generator 
                 sigs = sg.generate_signals(
-                    sym, df, quote, news_sym, pr, ml, 
-                    fundamental_score=50, market_condition=None
+                    sym, df, quote, news_sym, pr, ml,
+                    fundamental=None,       # crypto has no fundamental data
+                    market_condition=None,  # crypto trades 24/7, no market condition
                 )
                 
                 new_signals = []

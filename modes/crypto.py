@@ -124,104 +124,161 @@ def calc_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 def generate_signal(symbol: str, df: pd.DataFrame) -> Optional[dict]:
     """Run strategies and generate standard signal dictionary."""
-    if df is None or len(df) < 50:
+    if df is None or len(df) < 60:
         return None
 
     df = calc_indicators(df)
-    last = df.iloc[-1]
-    prev = df.iloc[-2]
-    
+    last  = df.iloc[-1]
+    prev  = df.iloc[-2]
+    prev2 = df.iloc[-3]
+
     price = last["close"]
-    atr = last["atr_14"]
+    atr   = last["atr_14"]
     if pd.isna(atr) or atr == 0:
         return None
 
+    rsi      = last["rsi_14"]
+    macd_h   = last["macd_hist"]
+    ema50    = last["ema_50"]
+    bb_upper = last["bb_upper"]
+    bb_lower = last["bb_lower"]
+    bb_mid   = (bb_upper + bb_lower) / 2
+    vol      = last["volume"]
+    vol_avg  = df["volume"].iloc[-20:].mean()
+    vol_ratio = vol / vol_avg if vol_avg > 0 else 1.0
+
     signal_type = None
-    reason = None
-    confidence = 0
+    reason      = None
+    confidence  = 0
+    strategy    = ""
 
-    # ─────────────────────────────────────────────────
-    # STRATEGY 1: Momentum Breakout (Bullish)
-    # ─────────────────────────────────────────────────
-    if price > last["ema_50"] and prev["macd_hist"] <= 0 and last["macd_hist"] > 0:
+    # ───────────────────────────────────────────────
+    # STRATEGY 1: Trend Momentum (EMA50 + MACD bullish direction)
+    # Fires whenever MACD hist has been positive for 1–2 bars AND price
+    # is above EMA50 — no exact crossover tick required.
+    # ───────────────────────────────────────────────
+    if (price > ema50 * 1.002 and macd_h > 0
+            and prev["macd_hist"] > prev2["macd_hist"]   # MACD hist accelerating upward
+            and rsi > 45 and rsi < 72
+            and vol_ratio >= 1.2):
         signal_type = "BUY"
-        reason = "MACD Breakout ABOVE EMA50"
-        confidence = 85
-    
-    # STRATEGY 1: Momentum Breakdown (Bearish)
-    elif price < last["ema_50"] and prev["macd_hist"] >= 0 and last["macd_hist"] < 0:
-        signal_type = "SELL"
-        reason = "MACD Breakdown BELOW EMA50"
-        confidence = 85
+        strategy    = "CRYPTO_MOMENTUM"
+        reason      = f"Trend: Above EMA50 | MACD bullish momentum | RSI {rsi:.0f} | Vol {vol_ratio:.1f}x"
+        confidence  = int(min(88, 65 + (rsi - 45) * 0.5 + (vol_ratio - 1) * 8))
 
-    # ─────────────────────────────────────────────────
-    # STRATEGY 2: Mean Reversion (RSI + Bollinger)
-    # ─────────────────────────────────────────────────
-    elif price < last["bb_lower"] and last["rsi_14"] < 30 and last["rsi_14"] > prev["rsi_14"]:
-        signal_type = "BUY"
-        reason = "Oversold BB Pierce + RSI Hook"
-        confidence = 78
-        
-    elif price > last["bb_upper"] and last["rsi_14"] > 70 and last["rsi_14"] < prev["rsi_14"]:
+    # ───────────────────────────────────────────────
+    # STRATEGY 2: Trend Breakdown (EMA50 + MACD bearish direction)
+    # ───────────────────────────────────────────────
+    elif (price < ema50 * 0.998 and macd_h < 0
+            and prev["macd_hist"] < prev2["macd_hist"]   # MACD hist accelerating downward
+            and rsi < 55 and rsi > 28
+            and vol_ratio >= 1.2):
         signal_type = "SELL"
-        reason = "Overbought BB Rejection"
-        confidence = 78
+        strategy    = "CRYPTO_MOMENTUM"
+        reason      = f"Breakdown: Below EMA50 | MACD bearish momentum | RSI {rsi:.0f} | Vol {vol_ratio:.1f}x"
+        confidence  = int(min(88, 65 + (55 - rsi) * 0.5 + (vol_ratio - 1) * 8))
+
+    # ───────────────────────────────────────────────
+    # STRATEGY 3: RSI Oversold Hook (mean reversion, no BB pierce needed)
+    # ───────────────────────────────────────────────
+    elif (rsi < 35 and rsi > prev["rsi_14"]
+            and rsi > prev2["rsi_14"]           # RSI hooking up for 2 bars
+            and price >= bb_lower * 0.995
+            and macd_h > prev["macd_hist"]):
+        signal_type = "BUY"
+        strategy    = "CRYPTO_REVERSION"
+        reason      = f"Oversold Hook: RSI {rsi:.0f} turning up | MACD divergence"
+        confidence  = int(min(82, 58 + (35 - rsi) * 1.2))
+
+    # ───────────────────────────────────────────────
+    # STRATEGY 4: RSI Overbought Roll (mean reversion)
+    # ───────────────────────────────────────────────
+    elif (rsi > 65 and rsi < prev["rsi_14"]
+            and rsi < prev2["rsi_14"]           # RSI rolling over for 2 bars
+            and price <= bb_upper * 1.005
+            and macd_h < prev["macd_hist"]):
+        signal_type = "SELL"
+        strategy    = "CRYPTO_REVERSION"
+        reason      = f"Overbought Roll: RSI {rsi:.0f} turning down | MACD weakening"
+        confidence  = int(min(82, 58 + (rsi - 65) * 1.2))
+
+    # ───────────────────────────────────────────────
+    # STRATEGY 5: Volume Spike Breakout above EMA50
+    # Large volume spike while price pushes above midband and EMA50
+    # ───────────────────────────────────────────────
+    elif (vol_ratio >= 2.5 and price > ema50
+            and price > bb_mid
+            and prev["close"] <= prev["ema_50"]
+            and rsi < 75):
+        signal_type = "BUY"
+        strategy    = "CRYPTO_BREAKOUT"
+        reason      = f"Vol Spike Breakout: {vol_ratio:.1f}x avg | Crossed EMA50 | RSI {rsi:.0f}"
+        confidence  = int(min(90, 70 + (vol_ratio - 2.5) * 5))
 
     if not signal_type:
         return None
 
     # Risk Management (Dynamic ATR-based SL & TP)
     if signal_type == "BUY":
-        sl = price - (1.5 * atr)
+        sl     = price - (1.5 * atr)
         target = price + (3.0 * atr)
-    else:  # SELL
-        sl = price + (1.5 * atr)
+    else:
+        sl     = price + (1.5 * atr)
         target = price - (3.0 * atr)
 
-    pattern_name, pattern_score = detect_pattern(df)
+    pattern_name, pattern_conf = detect_pattern(df)
     news_score = get_fear_greed()
-    
+
     ml_score = 0
     if predict_crypto:
-        ml_res = predict_crypto(df)
-        if (signal_type == "BUY" and ml_res["bias"] == "BULLISH") or (signal_type == "SELL" and ml_res["bias"] == "BEARISH"):
-            ml_score = ml_res["score"]
+        try:
+            ml_res = predict_crypto(df)
+            if ((signal_type == "BUY"  and ml_res.get("bias") == "BULLISH") or
+                (signal_type == "SELL" and ml_res.get("bias") == "BEARISH")):
+                ml_score = ml_res.get("score", 0)
+        except Exception:
+            pass
 
-    # Format return dict to match standard Dashboard signal format
     return {
-        "symbol": symbol.replace("USDT",""),
-        "signal_type": signal_type,
-        "entry": round(price, 4),
-        "target": round(target, 4),
-        "stop_loss": round(sl, 4),
-        "risk_reward": 2.0,
-        "strategy": "CRYPTO_MOMENTUM" if "MACD" in reason else "CRYPTO_REVERSION",
-        "pattern": pattern_name,
-        "reason": reason,
-        "overall_score": confidence,
-        "technical_score": confidence,
-        "ml_score": ml_score,
-        "sentiment_score": news_score,
-        "pattern_score": pattern_score,
+        "symbol":           symbol.replace("USDT", ""),
+        "signal_type":      signal_type,
+        "entry":            round(price, 4),
+        "target":           round(target, 4),
+        "stop_loss":        round(sl, 4),
+        "risk_reward":      2.0,
+        "strategy":         strategy,
+        "pattern":          pattern_name,
+        "reason":           reason,
+        "overall_score":    confidence,
+        "technical_score":  confidence,
+        "ml_score":         ml_score,
+        "sentiment_score":  news_score,
+        "pattern_score":    pattern_conf,
         "fundamental_score": 50,
+        "mode":             "CRYPTO",
+        "conviction":       "HIGH" if confidence >= 80 else "MEDIUM",
         "indicators": {
-            "rsi": round(last["rsi_14"], 2),
-            "macd": round(last["macd_hist"], 4),
-            "volume_24h": last["volume"]
-        }
+            "rsi":       round(rsi, 2),
+            "macd":      round(macd_h, 6),
+            "ema50":     round(ema50, 4),
+            "vol_ratio": round(vol_ratio, 2),
+        },
     }
 
 def scan_crypto_signals(coins: List[str] = None) -> List[dict]:
     """Scan top crypto coins and return actionable signals."""
     coins = coins or TOP_COINS
     signals = []
-    logger.info(f"Scanning {len(coins)} crypto pairs sequentially (15m)...")
-    
+    logger.info(f"Scanning {len(coins)} crypto pairs (1h candles, 200 bars)...")
+
     for symbol in coins:
         try:
-            df = get_klines(symbol, "15m", 100)
+            # 1h candles give EMA50 = 50 hours of history (mature enough)
+            # 200 bars = ~8 days of context
+            df = get_klines(symbol, "1h", 200)
             sig = generate_signal(symbol, df)
             if sig:
+                logger.info(f"  Signal: {sig['signal_type']} {sig['symbol']} [{sig['strategy']}] score={sig['overall_score']}")
                 signals.append(sig)
         except Exception as e:
             logger.debug(f"Error scanning {symbol}: {e}")
