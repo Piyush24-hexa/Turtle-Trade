@@ -157,11 +157,20 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Optional[dict]:
     vol      = last["volume"]
     vol_avg  = df["volume"].iloc[-20:].mean()
     vol_ratio = vol / vol_avg if vol_avg > 0 else 1.0
+    bb_width_current = (bb_upper - bb_lower) / bb_mid if bb_mid > 0 else 0
+    bb_width_prev = (prev["bb_upper"] - prev["bb_lower"]) / ((prev["bb_upper"] + prev["bb_lower"]) / 2) if (prev["bb_upper"] + prev["bb_lower"]) > 0 else 0
+    
+    # Calculate simple ADX approximation using ATR and directional movement
+    up_move = last["high"] - prev["high"]
+    down_move = prev["low"] - last["low"]
+    plus_dm = up_move if (up_move > down_move and up_move > 0) else 0
+    minus_dm = down_move if (down_move > up_move and down_move > 0) else 0
 
     signal_type = None
     reason      = None
     confidence  = 0
     strategy    = ""
+    validity    = "Valid for 1-4 Hours (1H Candle Setup)"
 
     # ───────────────────────────────────────────────
     # STRATEGY 1: Trend Momentum (EMA50 + MACD bullish direction)
@@ -174,7 +183,7 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Optional[dict]:
             and vol_ratio >= 1.2):
         signal_type = "BUY"
         strategy    = "CRYPTO_MOMENTUM"
-        reason      = f"Trend: Above EMA50 | MACD bullish momentum | RSI {rsi:.0f} | Vol {vol_ratio:.1f}x"
+        reason      = f"Trend: Above EMA50 | MACD boosting | Vol {vol_ratio:.1f}x | {validity}"
         confidence  = int(min(88, 65 + (rsi - 45) * 0.5 + (vol_ratio - 1) * 8))
 
     # ───────────────────────────────────────────────
@@ -186,7 +195,7 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Optional[dict]:
             and vol_ratio >= 1.2):
         signal_type = "SELL"
         strategy    = "CRYPTO_MOMENTUM"
-        reason      = f"Breakdown: Below EMA50 | MACD bearish momentum | RSI {rsi:.0f} | Vol {vol_ratio:.1f}x"
+        reason      = f"Breakdown: Below EMA50 | MACD dying | Vol {vol_ratio:.1f}x | {validity}"
         confidence  = int(min(88, 65 + (55 - rsi) * 0.5 + (vol_ratio - 1) * 8))
 
     # ───────────────────────────────────────────────
@@ -198,7 +207,7 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Optional[dict]:
             and macd_h > prev["macd_hist"]):
         signal_type = "BUY"
         strategy    = "CRYPTO_REVERSION"
-        reason      = f"Oversold Hook: RSI {rsi:.0f} turning up | MACD divergence"
+        reason      = f"Oversold Hook: RSI {rsi:.0f} turning up | {validity}"
         confidence  = int(min(82, 58 + (35 - rsi) * 1.2))
 
     # ───────────────────────────────────────────────
@@ -210,7 +219,7 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Optional[dict]:
             and macd_h < prev["macd_hist"]):
         signal_type = "SELL"
         strategy    = "CRYPTO_REVERSION"
-        reason      = f"Overbought Roll: RSI {rsi:.0f} turning down | MACD weakening"
+        reason      = f"Overbought Roll: RSI {rsi:.0f} turning down | {validity}"
         confidence  = int(min(82, 58 + (rsi - 65) * 1.2))
 
     # ───────────────────────────────────────────────
@@ -223,8 +232,26 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Optional[dict]:
             and rsi < 75):
         signal_type = "BUY"
         strategy    = "CRYPTO_BREAKOUT"
-        reason      = f"Vol Spike Breakout: {vol_ratio:.1f}x avg | Crossed EMA50 | RSI {rsi:.0f}"
+        reason      = f"Vol Spike Breakout: {vol_ratio:.1f}x avg | {validity}"
         confidence  = int(min(90, 70 + (vol_ratio - 2.5) * 5))
+
+    # ───────────────────────────────────────────────
+    # STRATEGY 6: Volatility Squeeze Breakout (Bollinger Bands expanding)
+    # BB width drops very low, then suddenly volume rushes in + ADX momentum.
+    # ───────────────────────────────────────────────
+    elif (bb_width_prev < 0.04 and bb_width_current > bb_width_prev * 1.15
+            and vol_ratio > 1.5):
+        # We broke out of a tight squeeze with volume
+        if price > ema50 and plus_dm > minus_dm:
+            signal_type = "BUY"
+            strategy    = "CRYPTO_SQUEEZE"
+            reason      = f"BB Squeeze Bull Breakout | Vol surge | {validity}"
+            confidence  = int(min(89, 70 + (vol_ratio - 1.5) * 8))
+        elif price < ema50 and minus_dm > plus_dm:
+            signal_type = "SELL"
+            strategy    = "CRYPTO_SQUEEZE"
+            reason      = f"BB Squeeze Bear Breakdown | Vol surge | {validity}"
+            confidence  = int(min(89, 70 + (vol_ratio - 1.5) * 8))
 
     if not signal_type:
         return None
@@ -260,6 +287,7 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Optional[dict]:
         "strategy":         strategy,
         "pattern":          pattern_name,
         "reason":           reason,
+        "validity":         validity,
         "overall_score":    confidence,
         "technical_score":  confidence,
         "ml_score":         ml_score,

@@ -749,3 +749,18 @@ html, body {
   transition: background .2s;
 }
 .ai-send-btn:hover { background: #0070f3; }
+
+/* ══ AI VERDICT BADGES (PHASE 4) ══ */
+.ai-badge-approved { background: rgba(0,208,132,.15); color: var(--green); border: 1px solid rgba(0,208,132,.3); }
+.ai-badge-rejected { background: rgba(255,58,92,.15); color: var(--red); border: 1px solid rgba(255,58,92,.3); }
+.ai-badge-skipped { background: rgba(100,116,139,.15); color: var(--text3); border: 1px solid rgba(100,116,139,.3); }
+
+.ai-debate-drawer {
+  animation: slide-down 0.2s ease-out forwards;
+  border-left: 2px solid var(--accent2);
+}
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}

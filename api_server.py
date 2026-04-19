@@ -122,29 +122,28 @@ def signals():
         conn = get_db()
         today = date.today().isoformat()
         rows = conn.execute(
-            "SELECT * FROM signals WHERE timestamp LIKE ? ORDER BY timestamp DESC LIMIT 30",
+            "SELECT * FROM orders WHERE created_at LIKE ? ORDER BY created_at DESC LIMIT 30",
             (f"{today}%",)
         ).fetchall()
         conn.close()
         result = []
         for r in rows:
             d = dict(r)
-            # Parse JSON extras if stored
-            try:
-                extras = json.loads(d.get("extras", "{}"))
-                d.update(extras)
-            except Exception:
-                pass
+            # Parse ai_committee if we want to send it to the frontend
+            if "ai_reasoning" in d and d["ai_reasoning"]:
+                try:
+                    d["ai_committee"] = json.loads(d["ai_reasoning"])
+                except Exception:
+                    pass
             result.append(d)
 
-        # If no DB signals, demo signals
+        # If no DB signals, empty block (no longer spoofing demo)
         if not result:
-            from utils.demo_data import _demo_signals
-            result = _demo_signals()
+            return jsonify([])
         return jsonify(result)
     except Exception as e:
-        from utils.demo_data import _demo_signals
-        return jsonify(_demo_signals())
+        print(f"Error fetching signals: {e}")
+        return jsonify([])
 
 
 
@@ -308,6 +307,71 @@ def execute_nlq():
         result = query_trade_history(query)
         return jsonify(result)
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ════════════════════════════════════════
+# EXTERNAL SIGNAL WEBHOOK INGESTION
+# ════════════════════════════════════════
+@app.route("/api/webhook/external", methods=["POST"])
+def webhook_external():
+    """
+    Accepts generic JSON signals from TradingView, MT4/5, or custom bots.
+    Expected JSON: {"symbol": "BTCUSDT", "action": "BUY", "price": 65000, "strategy": "TV Trend", "score": 85, "message": "My custom script."}
+    """
+    try:
+        payload = request.json
+        if not payload:
+            return jsonify({"error": "No JSON payload provided"}), 400
+            
+        symbol = payload.get("symbol", "UNKNOWN").upper()
+        action = payload.get("action", payload.get("signal_type", "BUY")).upper()
+        price = float(payload.get("price", 0.0))
+        
+        # Build standard enriched signal format
+        signal = {
+            "symbol": symbol,
+            "signal_type": action,
+            "mode": "WEBHOOK",
+            "strategy": payload.get("strategy", "External Script"),
+            "reason": payload.get("message", "Ingested from external webhook"),
+            "overall_score": float(payload.get("score", 75.0)),
+            "conviction": "HIGH" if float(payload.get("score", 75.0)) > 80 else "MEDIUM",
+            "entry": price,
+            "target": price * 1.05 if action == "BUY" else price * 0.95, # Basic 5% default target
+            "stop_loss": price * 0.98 if action == "BUY" else price * 1.02, # Basic 2% default SL
+            "paper_trade": True,
+            "technical_score": float(payload.get("score", 75.0))
+        }
+
+        # 1. Ask AI Committee to evaluate it
+        try:
+            from ai_agents import committee
+            import logging
+            logging.info(f"Passing Webhook Signal {symbol} to AI Committee...")
+            ai_verdict = committee.evaluate_signal(signal)
+            signal["ai_committee"] = ai_verdict
+        except Exception as e:
+            logging.error(f"AI Committee Webhook Error: {e}")
+            
+        # 2. Save Trade to Database
+        from execution import order_manager
+        order_id = order_manager.create_order(signal, paper_trade=True)
+        
+        # 3. Alert Telegram
+        try:
+            import telegram_bot as tb
+            from execution.signal_formatter import format_telegram
+            msg = f"🌐 <b>EXTERNAL WEBHOOK SIGNAL</b> 🌐\n\n" + format_telegram(signal)
+            tb.send_message(msg)
+        except Exception as e:
+            logging.error(f"Telegram Webhook Alert Error: {e}")
+
+        return jsonify({"status": "success", "order_id": order_id, "message": f"Ingested {action} for {symbol}"}), 201
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 

@@ -204,13 +204,51 @@ function renderSignalCard(sig) {
       ${fundScore ? scoreBar('FUND', fundScore, 'fill-fund') : ''}
     </div>
     <div class="sig-price-row">
-      <span class="sig-entry">Entry: ${curr}${fmt(sig.entry)}</span>
-      <span class="sig-target">▲ ${curr}${fmt(sig.target)}</span>
+      <span class="sig-entry">Entry: ${curr}${fmt(sig.entry_price || sig.entry)}</span>
+      <span class="sig-target">▲ ${curr}${fmt(sig.target_price || sig.target)}</span>
       <span class="sig-sl">▼ ${curr}${fmt(sig.stop_loss)}</span>
-      <span class="sig-rr">1:${(sig.risk_reward||0).toFixed(1)}</span>
     </div>
     <div class="sig-strategy">${sig.strategy || ''} ${sig.pattern ? '| ' + sig.pattern.replace(/_/g,' ') : ''}</div>
   `;
+
+  // Phase 4: AI Committee Verdict Badge & Debate Drawer
+  const aiBadge = document.createElement('div');
+  const aiDecision = sig.ai_decision ? sig.ai_decision.toUpperCase() : (sig.ai_committee ? sig.ai_committee.final_decision : 'SKIPPED');
+  const aiClass = aiDecision === 'APPROVED' ? 'ai-badge-approved' : aiDecision === 'REJECTED' ? 'ai-badge-rejected' : 'ai-badge-skipped';
+  const aiIcon = aiDecision === 'APPROVED' ? '✅' : aiDecision === 'REJECTED' ? '❌' : '🤖';
+  const aiText = aiDecision === 'SKIPPED' ? 'NO AI REVIEW' : `AI ${aiDecision}`;
+  
+  aiBadge.innerHTML = `<div class="ai-badge-header ${aiClass}" style="margin-top:10px; padding:6px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer; display:flex; justify-content:space-between;">
+    <span>${aiIcon} ${aiText}</span>
+    ${sig.ai_committee ? '<span>SHOW DEBATE ▼</span>' : ''}
+  </div>`;
+
+  if (sig.ai_committee) {
+    const drawer = document.createElement('div');
+    drawer.className = 'ai-debate-drawer';
+    drawer.style.display = 'none';
+    drawer.style.marginTop = '4px';
+    drawer.style.padding = '8px';
+    drawer.style.background = 'var(--bg-dark)';
+    drawer.style.borderRadius = '4px';
+    drawer.style.fontSize = '10px';
+    drawer.innerHTML = `
+      <div style="margin-bottom:6px"><strong style="color:#1a8fff">Technical Analyst:</strong> ${sig.ai_committee.technical_analyst_opinion}</div>
+      <div style="margin-bottom:6px"><strong style="color:#f0a500">Risk Manager:</strong> ${sig.ai_committee.risk_manager_opinion}</div>
+      <div><strong style="color:#c084fc">Head Quant:</strong> ${sig.ai_committee.head_quant_summary}</div>
+    `;
+    
+    // Toggle drawer on badge click
+    aiBadge.querySelector('.ai-badge-header').onclick = (e) => {
+      e.stopPropagation();
+      drawer.style.display = drawer.style.display === 'none' ? 'block' : 'none';
+      const toggleText = aiBadge.querySelector('span:last-child');
+      if (toggleText) toggleText.innerText = drawer.style.display === 'none' ? 'SHOW DEBATE ▼' : 'HIDE DEBATE ▲';
+    };
+    aiBadge.appendChild(drawer);
+  }
+
+  card.appendChild(aiBadge);
   return card;
 }
 
