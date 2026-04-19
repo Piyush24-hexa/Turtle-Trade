@@ -56,11 +56,9 @@ def run_crypto_scan(tb, om, sg, news_scraper):
                 
                 new_signals = []
                 for s in sigs:
-                    score = sg.score_signal(s, news_sym, pr, ml, 50, None)
-                    if score >= config.MIN_SCORE_TO_SIGNAL:
-                        s["overall_score"] = int(score)
-                        s["conviction"] = "HIGH" if score >= 80 else "MEDIUM"
-                        new_signals.append(s)
+                    # Signals from generate_signals() are already scored and filtered;
+                    # no separate score_signal() step needed.
+                    new_signals.append(s)
                 
                 all_signals.extend(new_signals)
                 

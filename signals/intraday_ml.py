@@ -510,6 +510,13 @@ def predict_intraday(df: pd.DataFrame, prev_day: Optional[pd.DataFrame] = None) 
 # =====================================================
 
 if __name__ == "__main__":
+    # Ensure project root is on the path when run standalone
+    import sys
+    from pathlib import Path as _Path
+    _BASE = _Path(__file__).resolve().parent.parent
+    if str(_BASE) not in sys.path:
+        sys.path.insert(0, str(_BASE))
+
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     import yfinance as yf
 

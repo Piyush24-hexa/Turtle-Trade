@@ -264,6 +264,6 @@ if __name__ == "__main__":
     for s in sigs:
         print(f"\n{s['signal_type']} {s['symbol']} [{s['strategy']}]")
         print(f"  Score: {s['overall_score']} | Entry: ${s['entry']}")
-        print(f"  Target: ${s['target']} | SL: ${s['stoploss']}")
+        print(f"  Target: ${s['target']} | SL: ${s['stop_loss']}")
         print(f"  Reason: {s['reason']}")
     print("\nScan Finished.")

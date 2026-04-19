@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 from typing import Dict, Any
@@ -8,6 +9,27 @@ from openai import OpenAI
 import config
 
 logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────────
+# PROMPT INJECTION SANITIZATION
+# ─────────────────────────────────────────────────
+_INJECTION_PATTERNS = re.compile(
+    r"(ignore previous|ignore all|disregard|forget your instructions|"
+    r"you are now|new instructions|system:|<\|im_start\|>|\[INST\]|"
+    r"act as|jailbreak|override prompt)",
+    re.IGNORECASE,
+)
+
+def _sanitize_news(text: str, max_len: int = 200) -> str:
+    """Sanitize untrusted headline text before embedding in LLM prompts."""
+    if not text:
+        return ""
+    # Strip whitespace / newlines that break prompt structure
+    text = text.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+    # Remove obvious prompt-injection keywords
+    text = _INJECTION_PATTERNS.sub("[REDACTED]", text)
+    # Hard truncate
+    return text[:max_len]
 
 # Initialize OpenAI client with generic Base URL for Deepseek/Other compatibility
 try:
@@ -33,7 +55,8 @@ def _get_live_news_context(symbol: str = "") -> str:
             if sorted_alerts:
                 context_lines.append("=== HIGH-IMPACT MACRO/POLITICAL ALERTS (MUST CONSIDER FOR RIPPLE EFFECTS) ===")
                 for a in sorted_alerts:
-                    context_lines.append(f"- [{a.get('sentiment', 'neutral').upper()}] {a.get('title', '')}")
+                    safe_title = _sanitize_news(a.get("title", ""))
+                    context_lines.append(f"- [{a.get('sentiment', 'neutral').upper()}] {safe_title}")
         except Exception as e:
             logger.warning(f"Failed to read news cache: {e}")
 
@@ -44,7 +67,10 @@ def _get_live_news_context(symbol: str = "") -> str:
         results = yf.Ticker(ticker_query).news
         if results:
             context_lines.append(f"=== RECENT LIVE HEADLINES ({ticker_query}) ===")
-            news_snippets = [f"- {r.get('title', '')}: {r.get('summary', '')}" for r in results[:4]]
+            news_snippets = [
+                f"- {_sanitize_news(r.get('title', ''))}: {_sanitize_news(r.get('summary', ''), max_len=120)}"
+                for r in results[:4]
+            ]
             context_lines.extend(news_snippets)
     except Exception as e:
         logger.warning(f"Yahoo news search failed: {e}")

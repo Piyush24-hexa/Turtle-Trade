@@ -143,7 +143,7 @@ def _run_technical_strategies(symbol, df, quote):
         }
 
     # ── Strategy 1: Breakout ──
-    if "BREAKOUT" in getattr(config, "ACTIVE_STRATEGIES", ["BREAKOUT"]) and (ltp > prev20h * 1.001 and vol_ratio >= 1.5
+    if "BREAKOUT" in getattr(config, "ACTIVE_STRATEGIES", []) and (ltp > prev20h * 1.001 and vol_ratio >= 1.5
             and trend in ("UPTREND", "SIDEWAYS") and rsi < 75):
         s = _signal("BUY", "BREAKOUT",
                     f"Breakout above Rs.{prev20h:.0f} | Vol {vol_ratio:.1f}x | {trend}",
@@ -151,7 +151,7 @@ def _run_technical_strategies(symbol, df, quote):
         if s: signals.append(s)
 
     # ── Strategy 2: RSI Reversal ──
-    if "RSI_REVERSAL" in getattr(config, "ACTIVE_STRATEGIES", ["RSI_REVERSAL"]):
+    if "RSI_REVERSAL" in getattr(config, "ACTIVE_STRATEGIES", []):
         if rsi < 35 and macd_hist > 0 and close.iloc[-1] > close.iloc[-2]:
             s = _signal("BUY", "RSI_REVERSAL",
                         f"RSI {rsi:.0f} oversold bounce | MACD turning up",
@@ -164,7 +164,7 @@ def _run_technical_strategies(symbol, df, quote):
             if s: signals.append(s)
 
     # ── Strategy 3: EMA Crossover ──
-    if "EMA_CROSSOVER" in getattr(config, "ACTIVE_STRATEGIES", ["EMA_CROSSOVER"]):
+    if "EMA_CROSSOVER" in getattr(config, "ACTIVE_STRATEGIES", []):
         if (ema9.iloc[-2] < ema21.iloc[-2] and ema9.iloc[-1] > ema21.iloc[-1]
                 and rsi < 65 and macd_hist > 0):
             s = _signal("BUY", "EMA_CROSS",
@@ -181,7 +181,7 @@ def _run_technical_strategies(symbol, df, quote):
     # ── Strategy 4: S/R Bounce ──
     dist_support    = abs(ltp - support) / ltp
     dist_resistance = abs(ltp - resistance) / ltp
-    if "SR_BOUNCE" in getattr(config, "ACTIVE_STRATEGIES", ["SR_BOUNCE"]):
+    if "SR_BOUNCE" in getattr(config, "ACTIVE_STRATEGIES", []):
         if dist_support < 0.015 and rsi < 55 and macd_hist > 0:
             s = _signal("BUY", "SR_BOUNCE",
                         f"Support bounce at Rs.{support:.0f} | RSI {rsi:.0f} | Target R: Rs.{resistance:.0f}",
@@ -196,7 +196,7 @@ def _run_technical_strategies(symbol, df, quote):
     # ── Strategy 5: BB Squeeze breakout ──
     bb_width = (bb_up - bb_low) / close.iloc[-1]
     prev_bb_width = ((bb_mid + 2*bb_std).iloc[-6] - (bb_mid - 2*bb_std).iloc[-6]) / close.iloc[-6]
-    if "BB_SQUEEZE" in getattr(config, "ACTIVE_STRATEGIES", ["BB_SQUEEZE"]) and bb_width < prev_bb_width * 0.7 and vol_ratio > 2.0:
+    if "BB_SQUEEZE" in getattr(config, "ACTIVE_STRATEGIES", []) and bb_width < prev_bb_width * 0.7 and vol_ratio > 2.0:
         if close.iloc[-1] > bb_mid.iloc[-1] and trend != "DOWNTREND":
             s = _signal("BUY", "BB_SQUEEZE",
                         f"BB squeeze breakout upward | Vol {vol_ratio:.1f}x surge",
@@ -302,7 +302,7 @@ def _conviction(score: float) -> str:
 def _generate_news_signal(symbol: str, news_data: dict, df, quote, ltp: float) -> Optional[dict]:
     """
     Generate a signal triggered primarily by a strong news catalyst.
-    Requires FinBERT score >= 0.85 AND technical confirmation.
+    Requires FinBERT score >= 0.80 AND technical confirmation.
     """
     if not news_data:
         return None

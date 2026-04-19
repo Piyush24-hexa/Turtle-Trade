@@ -205,7 +205,7 @@ def close_order(order_id: int, exit_price: float, exit_reason: str = "MANUAL"):
     order = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
     if not order:
         conn.close()
-        return
+        return 0.0  # Return 0 instead of None so callers don't get misleading null JSON
 
     entry = order["fill_price"] or order["entry_price"]
     qty = order["quantity"] or 1
@@ -243,7 +243,7 @@ def close_order(order_id: int, exit_price: float, exit_reason: str = "MANUAL"):
 def update_unrealized_pnl(order_id: int, current_price: float):
     """Update live unrealized P&L for open orders."""
     conn = _conn()
-    order = conn.execute("SELECT * FROM orders WHERE id=? AND status IN ('FILLED','PLACED')", (order_id,)).fetchone()
+    order = conn.execute("SELECT * FROM orders WHERE id=? AND status IN ('FILLED','PLACED','PENDING')", (order_id,)).fetchone()
     if not order:
         conn.close()
         return

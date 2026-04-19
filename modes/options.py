@@ -118,7 +118,7 @@ def analyze_options(symbol: str = "NIFTY") -> OptionsSnapshot:
         return snap
 
     try:
-        records = chain_data = data["records"]
+        records = data["records"]  # chain_data alias removed — was unused
         filtered = data.get("filtered", {})
 
         snap.spot_price = float(records.get("underlyingValue", 0))

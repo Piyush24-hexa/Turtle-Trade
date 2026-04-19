@@ -121,13 +121,19 @@ def send_market_close_summary(signals_today: list, pnl: float):
 
 
 def send_signal_alert(signal: dict):
-    """Send a trading signal."""
-    from execution.signal_formatter import format_telegram, enrich_signal
-    # Assuming signal is already enriched. If not, you might need to enrich it first, but typically signals coming here might be ready or close to it. If it's a dict, enrich_signal takes a raw dict. Let's assume it's enriched or we can just format it if it has the properties. Wait, format_telegram expects an EnrichedSignal object.
-    # Looking at main.py, best was just a dict.
-    # Let's fix this properly: signal_generator generates dicts. 
-    # Let's check format_telegram. It takes EnrichedSignal. But wait! format_telegram expects EnrichedSignal object. Let me check if signal_generator actually outputs EnrichedSignal or dict.
-
+    """Send a trading signal alert via Telegram."""
+    try:
+        from execution.signal_formatter import format_telegram
+        msg = format_telegram(signal)
+        send_message(msg)
+    except Exception as e:
+        logger.error(f"send_signal_alert error: {e}")
+        # Fallback: send a plain-text summary if formatter fails
+        stype = signal.get("signal_type", "SIGNAL")
+        sym   = signal.get("symbol", "?")
+        score = signal.get("overall_score", 0)
+        entry = signal.get("entry", 0)
+        send_message(f"📡 <b>{stype} {sym}</b> | Score: {score} | Entry: {entry}")
 
 def send_daily_loss_halt(daily_pnl: float):
     """Alert when daily loss limit is hit."""

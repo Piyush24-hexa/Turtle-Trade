@@ -19,12 +19,15 @@ Endpoints:
   GET  /crypto          → Crypto prices
 """
 
+import logging
 import sqlite3
 import json
 import os
 import sys
 from datetime import datetime, date
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 
@@ -218,22 +221,26 @@ def risk():
     try:
         conn = get_db()
         today = date.today().isoformat()
-        open_trades = conn.execute("SELECT * FROM trades WHERE status='OPEN'").fetchall()
-        closed = conn.execute("SELECT pnl FROM trades WHERE status='CLOSED'").fetchall()
+        open_trades = conn.execute(
+            "SELECT * FROM orders WHERE status IN ('PENDING','PLACED','FILLED')"
+        ).fetchall()
+        closed = conn.execute(
+            "SELECT realized_pnl FROM orders WHERE status='CLOSED'"
+        ).fetchall()
         day_pnl = conn.execute(
-            "SELECT COALESCE(SUM(pnl),0) FROM trades WHERE exit_time LIKE ? AND status='CLOSED'",
+            "SELECT COALESCE(SUM(realized_pnl),0) FROM orders WHERE exit_time LIKE ? AND status='CLOSED'",
             (f"{today}%",)
         ).fetchone()[0]
-        deployed = sum(t["entry_price"] * t["quantity"] for t in open_trades)
-        wins = sum(1 for r in closed if r["pnl"] > 0)
+        deployed = sum((t["entry_price"] or 0) * (t["quantity"] or 0) for t in open_trades)
+        wins = sum(1 for r in closed if (r["realized_pnl"] or 0) > 0)
         total_closed = len(closed)
         conn.close()
         return jsonify({
             "capital": config.TOTAL_CAPITAL,
-            "deployed": deployed,
+            "deployed": round(deployed, 2),
             "day_pnl": float(day_pnl),
             "drawdown": 0.0,
-            "win_rate": wins / total_closed if total_closed else None,
+            "win_rate": round(wins / total_closed * 100, 1) if total_closed else None,
             "open_trades": len(open_trades),
         })
     except Exception as e:
@@ -248,7 +255,9 @@ def risk():
 def positions():
     try:
         conn = get_db()
-        rows = conn.execute("SELECT * FROM trades WHERE status='OPEN'").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM orders WHERE status IN ('PENDING','PLACED','FILLED') ORDER BY created_at DESC"
+        ).fetchall()
         conn.close()
         return jsonify([dict(r) for r in rows])
     except Exception as e:

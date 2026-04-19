@@ -248,11 +248,15 @@ def detect_cup_handle(df: pd.DataFrame, lookback: int = 40) -> Optional[dict]:
     if len(df) < lookback:
         return None
     closes = df["close"].iloc[-lookback:].values
-    mid = lookback // 2
-    left_peak  = closes[:mid//2].max()
-    cup_bottom = closes[mid//4: 3*mid//4].min()
-    right_peak = closes[3*mid//4: mid].max()
-    handle     = closes[mid:].max()
+    # Divide lookback into clear, non-overlapping quarters to avoid window overlap
+    q1 = lookback // 4          # 0 .. q1       → left peak region
+    q2 = lookback // 2          # q1 .. q2      → left half of cup bottom
+    q3 = 3 * lookback // 4     # q2 .. q3      → right half of cup bottom
+    # q3 .. lookback            → right peak + handle region
+    left_peak  = closes[:q1].max()          # Peak before cup
+    cup_bottom = closes[q1:q3].min()        # Bottom of cup (no overlap with peaks)
+    right_peak = closes[q3: q3 + q1].max() # Peak after cup
+    handle     = closes[q3 + q1:].max()    # Handle consolidation (always after right peak)
 
     depth = (left_peak - cup_bottom) / left_peak
     if (abs(left_peak - right_peak) / left_peak < 0.05 and

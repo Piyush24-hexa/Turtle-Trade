@@ -1,0 +1,113 @@
+# LSTM Model Documentation (`lstm_model.keras`)
+
+This document provides a highly detailed, comprehensive breakdown of the Long Short-Term Memory (LSTM) machine learning model utilized in the Turtle-Trade Intelligence Platform. The model is dedicated to forecasting the 5-day directional trajectory of financial instruments.
+
+---
+
+## 1. Architectural Overview
+
+The core purpose of `lstm_model.keras` is to analyze a localized temporal sequence of price and volume derivations and map that sequence to a future probability curve. It differs from traditional classifiers by recognizing multi-day contextual patterns rather than evaluating isolated, day-to-day absolute features.
+
+- **Objective Classification**: Multi-class categorization for future 5-day return (`future_ret`).
+- **Target Horizons**:
+  - `class 2 (FLAT)`: Range bound (`-1.5% <= future_ret <= 1.5%`).
+  - `class 1 (UP)`: Upward breakout (`future_ret > 1.5%`).
+  - `class 0 (DOWN)`: Downward breakdown (`future_ret < -1.5%`).
+- **Sequence Length**: 60 consecutive trading days.
+- **Dimensionality**: Sequences measure shape `(60, 30+)`, meaning each prediction relies on a matrix of 60 days of 30+ engineered metrics.
+
+---
+
+## 2. Neural Network Topology
+
+The architecture uses a Keras `Sequential` API implementing a Deep Bidirectional structure. 
+
+```mermaid
+graph TD
+    IN[Input Layer: 60 Time Steps x 30+ Features] --> BN1[Batch Normalization]
+    BN1 --> BIDI1[Bidirectional LSTM: 64 Units]
+    BIDI1 --> DROP1[Dropout: 0.3]
+    DROP1 --> BN2[Batch Normalization]
+    BN2 --> BIDI2[Bidirectional LSTM: 32 Units]
+    BIDI2 --> DROP2[Dropout: 0.3]
+    DROP2 --> DENSE[Dense Layer: 32 Units, ReLU]
+    DENSE --> BN3[Batch Normalization]
+    BN3 --> OUT[Output Dense: 3 Units, Softmax]
+```
+
+### Layer-by-Layer Specifications
+
+1. **Input Map**: Accepts a 3D NumPy array `(batch_size, 60, num_features)`.
+2. **Batch Normalization (Layer 1)**: Intercepts raw scaled inputs to ensure the distribution mapping prevents vanishing gradients early on.
+3. **Bidirectional LSTM 1 (64 units)**: Transverses the 60-day window both forward and backward. Since `return_sequences=True`, it pumps an altered sequential output to the next layer rather than collapsing it into a single vector. Total feature maps per timestep = 128 (64 forward + 64 backward).
+4. **Dropout (0.3)**: Randomly masks 30% of tensors as dead. This is crucial for avoiding structural overfitting to specific macro events in the timeframe.
+5. **Batch Normalization (Layer 2)**: Re-zeroes the distributions before narrowing.
+6. **Bidirectional LSTM 2 (32 units)**: Collapses the sequence. Uses `return_sequences=False`, meaning the whole 60-day context is squashed into a single 1D tensor array of 64 values (32 for forward, 32 for reversed).
+7. **Dense Layer (32 units)**: Fully connected multi-layer perceptron wrapper using the Rectified Linear Unit (`ReLU`) algorithm. 
+8. **Output Layer (3 units)**: A fully connected classifier array mapping down to the `[DOWN, UP, FLAT]` integers using a `Softmax` distribution to enforce the sum of output bounds to exactly 1.0.
+
+---
+
+## 3. Advanced Feature Engineering Pipeline
+
+The network is blind to raw price entries (e.g., $150 or $3.50). Raw prices are omitted entirely because they fail across vastly scaled assets. Instead, the `compute_features` method constructs structural vectors.
+
+### Momentum & Volatility
+- **Historical Returns (`ret_1d`, `ret_3d`, `ret_5d`, `ret_10d`, `ret_20d`)**: Standard percentage change metrics.
+- **RSI (13-period)**: Custom adjusted bounded strength metric, squashed to `0.0 - 1.0`.
+- **ATR Percentage (`atr_pct`)**: Average True Range mapped against literal price to measure active volatility elasticity.
+- **Bollinger Dispersion (`bb_position`)**: Distance from the 20-day mean relative to two standard deviations `(c - bb_mid) / (2 * bb_std)`. A perfect representation of technical compression.
+
+### Trend Proxies
+- **EMA Distances**: Calculates the distance of current closure relative to the 9, 21, and 50 period Exponential Moving Averages `(C - EMA) / EMA`.
+- **MACD Histogram**: Distance from the MACD signal line, normalized against underlying price scale.
+- **VWAP Distance**: Anchor-weighted average accumulation relative to the present candle closure.
+
+### Volume & Flow
+- **Volume Ratio (`vol_ratio`)**: Specific asset volume mapped against a 20-day trailing mean buffer.
+- **Volume Trend**: 5-day delta of that 20-day mean.
+- **OBV Delta (`obv_trend`)**: Percentage change of the On-Balance Volume index over 5 days.
+
+### Candlestick Anatomy
+Mathematical abstractions of candlestick physics, mapping bull-bear conflict into a bound space `-1.0 to 1.0`:
+- **Body Percent**: `(Close - Open) / (High - Low)`.
+- **Upper Wick Percent**: Exhaustion metrics mapping distance from the high to the body.
+- **Lower Wick Percent**: Support metrics mapping distance from the body to the low.
+
+---
+
+## 4. Scaling and Dimensional Mismatch
+
+Because neural networks expect localized numerical spaces, an independent `sklearn.preprocessing.MinMaxScaler` instance is utilized.
+
+1. The data generator aggregates ALL historical feature arrays across ALL observed assets.
+2. `MinMaxScaler.fit()` sets a global floor and ceiling map for those 30+ features.
+3. The scaler parameters are pickled and exported natively to `models/lstm_scaler.pkl`. 
+4. **CRITICAL INFERENCE REQUIREMENT**: During inference (`predict_lstm`), the exact `.pkl` scaler must be utilized to translate live data before hitting the model endpoints. Failure to do so initiates the `ValueError: Scaler mismatch` warning if the pipeline detects shifted feature columns.
+
+---
+
+## 5. Hyperparameters and The Training Loop
+
+When invoked via `train_lstm(retrain=True)`:
+
+- **Data Sourcing**: Automatically aggregates 5 years of daily intervals via the `yfinance` module for a predefined collection of NIFTY proxy stocks (RELIANCE.NS, TCS.NS, etc). NaN or Inf computations from standard deviation edge cases are strictly filtered as zeroes `.replace([np.inf, -np.inf], np.nan).fillna(0)`.
+- **Optimizer**: `Adam` (Adaptive Moment Estimation). Designed specifically for deep networks addressing momentum and learning rate scaling automatically.
+- **Loss Equation**: `Categorical Crossentropy`. Imposes penalties based on divergence geometry. An incorrect prediction with a high probability yields a massively higher loss function update than an incorrect prediction with a neutral/ambiguous probability. 
+- **Learning Limits**: 20 cycles (`epochs`) slicing sequential loads of `32 batch_size`. Tests map to 80% explicit loop logic and 20% validation splits. 
+
+---
+
+## 6. Real-world Execution Context (Ensemble Math)
+
+Inside the primary platform ecosystem (`ml_signal_score`), the LSTM executes as a sub-model nested alongside an older Random Forest. 
+
+1. **Extraction Pipeline**: Returns explicit directional float distributions, for instance: `{'direction': 'UP', 'up_prob': 0.612, 'down_prob': 0.185, 'flat_prob': 0.203}`.
+2. **Context Resolution**: The engine breaks down the response into an explicit `lstm_score`.
+   - If the explicit direction is `UP`, the score is straight extracted: `0.612`.
+   - If the explicit direction is `DOWN`, the score is negatively inverted: `1 - down_prob`.
+3. **Weight Combination**: The combined inference equation governs final AI intelligence:
+   ```python
+   combined = (rf_weighted * 0.55) + (lstm_score * 0.45)
+   ```
+4. **Action Event Trigger**: A final `combined` metric greater than `0.6` confirms a bullish AI protocol event, while sub `0.4` triggers defensive AI bear logic protocols.

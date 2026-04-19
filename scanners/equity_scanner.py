@@ -223,13 +223,16 @@ def run_scan_cycle(dc, sg, tb, om, modules):
         except Exception as e:
             logger.error(f"  Error scanning {symbol}: {e}", exc_info=True)
 
-    try:
-        import json
-        ml_path = BASE / "models" / "ml_cache.json"
-        with open(ml_path, "w") as f:
-            json.dump({"predictions": ml_cache}, f)
-    except Exception as e:
-        logger.error(f"Failed to write ML cache: {e}")
+    if ml_cache:  # Only overwrite if we have fresh data — never wipe with empty results
+        try:
+            import json
+            ml_path = BASE / "models" / "ml_cache.json"
+            with open(ml_path, "w") as f:
+                json.dump({"predictions": ml_cache}, f)
+        except Exception as e:
+            logger.error(f"Failed to write ML cache: {e}")
+    else:
+        logger.warning("ML cache NOT updated — no ML results this scan (model may not be trained yet)")
 
     # ── Scan summary ──
     if all_signals:

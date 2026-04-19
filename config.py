@@ -197,8 +197,8 @@ INTRADAY_SQUARE_OFF      = (15, 10)     # Square off all at 3:10 PM
 INTRADAY_ML_THRESHOLD    = 0.70         # LightGBM confidence threshold
 INTRADAY_STRATEGIES      = ["VWAP_BAND", "ORB", "SUPERTREND", "ML_CONFLUENCE"]
 
-DEFAULT_SL_PCT           = getattr(__import__('builtins'), '_dsl', None) or 2.0  # Preserve existing if set
-DEFAULT_TP_PCT           = getattr(__import__('builtins'), '_dtp', None) or 4.0
+DEFAULT_SL_PCT           = 2.0   # Default stop-loss percentage
+DEFAULT_TP_PCT           = 4.0   # Default take-profit percentage
 
 
 # ─────────────────────────────────────────
