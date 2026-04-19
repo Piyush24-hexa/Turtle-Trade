@@ -39,6 +39,17 @@ def get_fear_greed() -> int:
         return 50
 
 def detect_pattern(df: pd.DataFrame) -> tuple:
+    """Detect advanced technical patterns, falling back to basic candles if module missing."""
+    try:
+        # Import the advanced 17-pattern engine used by Equity
+        from analysis.pattern_detector import analyze_patterns
+        res = analyze_patterns(df)
+        if res and hasattr(res, "primary_pattern") and res.primary_pattern:
+            return res.primary_pattern, int(res.reliability * 100)
+    except ImportError:
+        pass
+        
+    # FALLBACK: Basic Candle Patterns
     if len(df) < 3: return "", 0
     c1, c2 = df.iloc[-1], df.iloc[-2]
     body1 = abs(c1["close"] - c1["open"])
