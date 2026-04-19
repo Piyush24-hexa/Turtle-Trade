@@ -294,6 +294,24 @@ def order_reasoning(order_id):
 
 
 # ════════════════════════════════════════
+# NATURAL LANGUAGE QUERY (NLQ)
+# ════════════════════════════════════════
+@app.route("/api/nlq", methods=["POST"])
+def execute_nlq():
+    data = request.json
+    query = data.get("query", "")
+    if not query:
+        return jsonify({"error": "No query provided"}), 400
+        
+    try:
+        from ai_agents.committee import query_trade_history
+        result = query_trade_history(query)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ════════════════════════════════════════
 # ML PREDICTIONS
 # ════════════════════════════════════════
 @app.route("/ml")
