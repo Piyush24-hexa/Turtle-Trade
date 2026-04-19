@@ -153,9 +153,9 @@ def analyze_options(symbol: str = "NIFTY") -> OptionsSnapshot:
         # PCR
         if total_call_oi > 0:
             snap.pcr = round(total_put_oi / total_call_oi, 2)
-        if snap.pcr > 1.3:
-            snap.pcr_state = "BULLISH"  # High put writing = bullish
-        elif snap.pcr < 0.7:
+        if snap.pcr > 1.15:
+            snap.pcr_state = "BULLISH"  # Moderate/high put writing = bullish
+        elif snap.pcr < 0.85:
             snap.pcr_state = "BEARISH"
         else:
             snap.pcr_state = "NEUTRAL"

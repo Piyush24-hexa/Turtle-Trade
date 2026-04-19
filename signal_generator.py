@@ -152,29 +152,35 @@ def _run_technical_strategies(symbol, df, quote):
 
     # ── Strategy 2: RSI Reversal ──
     if "RSI_REVERSAL" in getattr(config, "ACTIVE_STRATEGIES", []):
-        if rsi < 35 and macd_hist > 0 and close.iloc[-1] > close.iloc[-2]:
+        # RSI oversold, MACD histogram is improving (curling up), price closed higher
+        macd_improving = macd_hist > df["macd_hist"].iloc[-2]
+        macd_worsening = macd_hist < df["macd_hist"].iloc[-2]
+        
+        if rsi < 35 and macd_improving and close.iloc[-1] > close.iloc[-2]:
             s = _signal("BUY", "RSI_REVERSAL",
-                        f"RSI {rsi:.0f} oversold bounce | MACD turning up",
+                        f"RSI {rsi:.0f} oversold | MACD momentum shifting up",
                         68, sl_pct=1.8, tp_pct=3.5)
             if s: signals.append(s)
-        elif rsi > 70 and macd_hist < 0 and close.iloc[-1] < close.iloc[-2]:
+        elif rsi > 65 and macd_worsening and close.iloc[-1] < close.iloc[-2]:
             s = _signal("SELL", "RSI_REVERSAL",
-                        f"RSI {rsi:.0f} overbought rejection | MACD turning down",
+                        f"RSI {rsi:.0f} overbought | MACD momentum shifting down",
                         65, sl_pct=1.8, tp_pct=3.5)
             if s: signals.append(s)
 
     # ── Strategy 3: EMA Crossover ──
     if "EMA_CROSSOVER" in getattr(config, "ACTIVE_STRATEGIES", []):
-        if (ema9.iloc[-2] < ema21.iloc[-2] and ema9.iloc[-1] > ema21.iloc[-1]
-                and rsi < 65 and macd_hist > 0):
+        # Check if crossed within the last 3 days
+        bull_cross_recent = any((ema9.iloc[-i] > ema21.iloc[-i]) and (ema9.iloc[-i-1] <= ema21.iloc[-i-1]) for i in range(1, 4))
+        bear_cross_recent = any((ema9.iloc[-i] < ema21.iloc[-i]) and (ema9.iloc[-i-1] >= ema21.iloc[-i-1]) for i in range(1, 4))
+        
+        if bull_cross_recent and ema9.iloc[-1] > ema21.iloc[-1] and rsi < 70 and macd_hist > 0:
             s = _signal("BUY", "EMA_CROSS",
-                        f"EMA 9 crossed above EMA 21 | RSI {rsi:.0f} | MACD bullish",
+                        f"EMA 9 > EMA 21 (recent cross) | RSI {rsi:.0f}",
                         72, sl_pct=2.0, tp_pct=4.0)
             if s: signals.append(s)
-        elif (ema9.iloc[-2] > ema21.iloc[-2] and ema9.iloc[-1] < ema21.iloc[-1]
-                  and rsi > 40 and macd_hist < 0):
+        elif bear_cross_recent and ema9.iloc[-1] < ema21.iloc[-1] and rsi > 35 and macd_hist < 0:
             s = _signal("SELL", "EMA_CROSS",
-                        f"EMA 9 crossed below EMA 21 | RSI {rsi:.0f} | MACD bearish",
+                        f"EMA 9 < EMA 21 (recent cross) | RSI {rsi:.0f}",
                         68, sl_pct=2.0, tp_pct=4.0)
             if s: signals.append(s)
 
@@ -182,14 +188,17 @@ def _run_technical_strategies(symbol, df, quote):
     dist_support    = abs(ltp - support) / ltp
     dist_resistance = abs(ltp - resistance) / ltp
     if "SR_BOUNCE" in getattr(config, "ACTIVE_STRATEGIES", []):
-        if dist_support < 0.015 and rsi < 55 and macd_hist > 0:
+        macd_improving = macd_hist > df["macd_hist"].iloc[-2]
+        macd_worsening = macd_hist < df["macd_hist"].iloc[-2]
+        
+        if dist_support < 0.015 and rsi < 55 and macd_improving:
             s = _signal("BUY", "SR_BOUNCE",
-                        f"Support bounce at Rs.{support:.0f} | RSI {rsi:.0f} | Target R: Rs.{resistance:.0f}",
+                        f"Support bounce near Rs.{support:.0f} | MACD curling up",
                         65, sl_pct=2.0, tp_pct=max(3.0, dist_resistance*100*0.9))
             if s: signals.append(s)
-        elif dist_resistance < 0.015 and rsi > 50 and macd_hist < 0:
+        elif dist_resistance < 0.015 and rsi > 50 and macd_worsening:
             s = _signal("SELL", "SR_BOUNCE",
-                        f"Resistance rejection at Rs.{resistance:.0f} | RSI {rsi:.0f}",
+                        f"Resistance rejection near Rs.{resistance:.0f} | MACD curling down",
                         62, sl_pct=1.8, tp_pct=max(3.0, dist_support*100*0.9))
             if s: signals.append(s)
 

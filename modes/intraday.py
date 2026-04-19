@@ -150,11 +150,14 @@ def compute_indicators(df: pd.DataFrame):
         st, st_dir = calc_supertrend(df, period=10, multiplier=3.0)
         st_val = float(st.iloc[-1]) if not np.isnan(st.iloc[-1]) else ltp
         st_dir_val = int(st_dir.iloc[-1])
-        # Was there a flip?
+        # Was there a flip recently (last 3 candles)?
         st_flipped = 0
-        if len(st_dir) >= 2:
-            if st_dir.iloc[-1] != st_dir.iloc[-2]:
-                st_flipped = st_dir_val  # +1 = flipped UP, -1 = flipped DOWN
+        if len(st_dir) >= 4:
+            # Check if it flipped in any of the last 3 transitions
+            if st_dir.iloc[-1] == 1 and any(st_dir.iloc[-i] == -1 for i in range(2, 5)):
+                st_flipped = 1
+            elif st_dir.iloc[-1] == -1 and any(st_dir.iloc[-i] == 1 for i in range(2, 5)):
+                st_flipped = -1
     except Exception:
         st_val = ltp
         st_dir_val = 0
@@ -288,10 +291,10 @@ def strategy_vwap_band(symbol: str, df: pd.DataFrame, ind: dict) -> List[dict]:
     ltp = ind["ltp"]
 
     # BUY: price near lower 2-sigma band
-    if (ltp <= ind["vwap_l2"] * 1.001
-            and ind["rsi7"] < 25
-            and ind["vol_ratio"] >= 1.3):
-        confidence = min(85, 60 + (25 - ind["rsi7"]) + (ind["vol_ratio"] - 1) * 10)
+    if (ltp <= ind["vwap_l2"] * 1.002
+            and ind["rsi7"] < 30
+            and ind["vol_ratio"] >= 1.2):
+        confidence = min(85, 60 + (30 - ind["rsi7"]) + (ind["vol_ratio"] - 1) * 10)
         sig = _build_signal(
             symbol, "BUY", "VWAP_BAND",
             f"VWAP -2sig reversal | RSI(7) {ind['rsi7']:.0f} | Vol {ind['vol_ratio']:.1f}x",
@@ -300,10 +303,10 @@ def strategy_vwap_band(symbol: str, df: pd.DataFrame, ind: dict) -> List[dict]:
         signals.append(sig)
 
     # SELL: price near upper 2-sigma band
-    if (ltp >= ind["vwap_u2"] * 0.999
-            and ind["rsi7"] > 75
-            and ind["vol_ratio"] >= 1.3):
-        confidence = min(85, 60 + (ind["rsi7"] - 75) + (ind["vol_ratio"] - 1) * 10)
+    if (ltp >= ind["vwap_u2"] * 0.998
+            and ind["rsi7"] > 70
+            and ind["vol_ratio"] >= 1.2):
+        confidence = min(85, 60 + (ind["rsi7"] - 70) + (ind["vol_ratio"] - 1) * 10)
         sig = _build_signal(
             symbol, "SELL", "VWAP_BAND",
             f"VWAP +2sig reversal | RSI(7) {ind['rsi7']:.0f} | Vol {ind['vol_ratio']:.1f}x",
