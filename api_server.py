@@ -265,6 +265,35 @@ def positions():
 
 
 # ════════════════════════════════════════
+# AI REASONING
+# ════════════════════════════════════════
+@app.route("/api/orders/<int:order_id>/reasoning")
+def order_reasoning(order_id):
+    try:
+        conn = get_db()
+        row = conn.execute("SELECT ai_decision, ai_reasoning FROM orders WHERE id = ?", (order_id,)).fetchone()
+        conn.close()
+        
+        if not row:
+            return jsonify({"error": "Order not found"}), 404
+            
+        reasoning = row["ai_reasoning"]
+        try:
+            import json
+            reasoning = json.loads(reasoning) if reasoning else None
+        except json.JSONDecodeError:
+            pass
+            
+        return jsonify({
+            "order_id": order_id,
+            "decision": row["ai_decision"],
+            "reasoning": reasoning
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ════════════════════════════════════════
 # ML PREDICTIONS
 # ════════════════════════════════════════
 @app.route("/ml")

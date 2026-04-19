@@ -43,23 +43,12 @@ def run_crypto_scan(tb, om, sg, news_scraper):
                     continue
                 
                 quote = {"ltp": df["close"].iloc[-1]}
-                news_sym = crypto_news.get(sym, {})
-                
-                pr = detect_all_patterns(sym, df)
-                ml = ml_signal_score(df)
-                
-                # Signal Generator 
-                sigs = sg.generate_signals(
-                    sym, df, quote, news_sym, pr, ml,
-                    fundamental=None,       # crypto has no fundamental data
-                    market_condition=None,  # crypto trades 24/7, no market condition
-                )
+                # Native Crypto Signal Engine (optimized for 24/7 altcoins)
+                sig = crypto.generate_signal(sym, df)
                 
                 new_signals = []
-                for s in sigs:
-                    # Signals from generate_signals() are already scored and filtered;
-                    # no separate score_signal() step needed.
-                    new_signals.append(s)
+                if sig:
+                    new_signals.append(sig)
                 
                 all_signals.extend(new_signals)
                 
