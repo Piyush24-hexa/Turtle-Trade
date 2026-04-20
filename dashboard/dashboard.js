@@ -115,25 +115,38 @@ async function fetchSignals() {
     container.innerHTML = '<div class="loading-pulse">Fetching options chain...</div>';
     try {
       const data = await get('/options');
-      container.innerHTML = `
-        <div class="signal-card ${data.signal === 'BULLISH' ? 'buy' : data.signal === 'BEARISH' ? 'sell' : ''}">
-          <div class="sig-header">
-            <span class="sig-symbol">NIFTY</span>
-            <span class="sig-type ${data.signal === 'BULLISH' ? 'buy' : 'sell'}">${data.signal}</span>
-            <span class="sig-conviction ${data.pcr_state?.toLowerCase() || 'neutral'}">${data.pcr_state || ''}</span>
-          </div>
-          <div class="score-bars">
-            ${scoreBar('PCR', Math.min(100, (data.pcr||1) * 50), 'fill-tech')}
-          </div>
-          <div class="sig-price-row" style="flex-wrap:wrap; gap:6px;">
-            <span>Max Pain: ₹${fmt(data.max_pain, 0)}</span>
-            <span class="sig-target">Support: ₹${fmt(data.support_from_oi, 0)}</span>
-            <span class="sig-sl">Resistance: ₹${fmt(data.resistance_from_oi, 0)}</span>
-          </div>
-          <div class="sig-strategy">PCR: ${data.pcr} | Put OI vs Call OI analysis</div>
-        </div>
-      `;
-      sigCount.textContent = 'NIFTY Options';
+      const nifty = data.nifty || data;
+      const bnf = data.banknifty || {};
+
+      function optionCard(d) {
+        if (!d || !d.symbol) return '';
+        const sigCls = d.signal === 'BULLISH' ? 'buy' : d.signal === 'BEARISH' ? 'sell' : '';
+        const unusualHtml = (d.unusual || []).map(u => `<div style="font-size:9px;color:var(--accent);margin-top:2px">⚡ ${u}</div>`).join('');
+        return `
+          <div class="signal-card ${sigCls}">
+            <div class="sig-header">
+              <span class="sig-symbol">${d.symbol}</span>
+              <span class="sig-type ${sigCls}">${d.signal || 'NEUTRAL'}</span>
+              <span class="sig-conviction ${(d.pcr_state||'neutral').toLowerCase()}">${d.pcr_state || ''}</span>
+              <span class="sig-score">PCR ${d.pcr || '—'}</span>
+            </div>
+            <div class="score-bars">
+              ${scoreBar('CALL OI', Math.min(100, (d.total_call_oi||0) / Math.max((d.total_call_oi||1) + (d.total_put_oi||1), 1) * 100), 'fill-news')}
+              ${scoreBar('PUT OI',  Math.min(100, (d.total_put_oi||0)  / Math.max((d.total_call_oi||1) + (d.total_put_oi||1), 1) * 100), 'fill-tech')}
+            </div>
+            <div class="sig-price-row" style="flex-wrap:wrap;gap:6px">
+              <span>Spot: ₹${fmt(d.spot_price, 0)}</span>
+              <span class="sig-target">Max Pain: ₹${fmt(d.max_pain, 0)}</span>
+              <span class="sig-target">Sup: ₹${fmt(d.support_from_oi, 0)}</span>
+              <span class="sig-sl">Res: ₹${fmt(d.resistance_from_oi, 0)}</span>
+            </div>
+            <div class="sig-strategy">Expiry: ${d.expiry || '—'} ${d.iv_atm ? '| IV: ' + d.iv_atm.toFixed(1) + '%' : ''}</div>
+            ${unusualHtml}
+          </div>`;
+      }
+
+      container.innerHTML = optionCard(nifty) + optionCard(bnf);
+      sigCount.textContent = 'NIFTY + BANKNIFTY';
     } catch(e) {
       container.innerHTML = `<div class="signal-card buy">
         <div class="sig-header"><span class="sig-symbol">NIFTY</span>

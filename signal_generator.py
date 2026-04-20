@@ -80,7 +80,8 @@ def _run_technical_strategies(symbol, df, quote):
     macd_slow = close.ewm(span=26, adjust=False).mean()
     macd      = macd_fast - macd_slow
     macd_sig  = macd.ewm(span=9, adjust=False).mean()
-    macd_hist = (macd - macd_sig).iloc[-1]
+    macd_hist_series = macd - macd_sig   # keep as Series for prev-bar comparison
+    macd_hist = macd_hist_series.iloc[-1]
 
     bb_mid  = close.rolling(20).mean()
     bb_std  = close.rolling(20).std()
@@ -152,9 +153,9 @@ def _run_technical_strategies(symbol, df, quote):
 
     # ── Strategy 2: RSI Reversal ──
     if "RSI_REVERSAL" in getattr(config, "ACTIVE_STRATEGIES", []):
-        # RSI oversold, MACD histogram is improving (curling up), price closed higher
-        macd_improving = macd_hist > df["macd_hist"].iloc[-2]
-        macd_worsening = macd_hist < df["macd_hist"].iloc[-2]
+        # Use the SERIES for prev-bar comparison (not df column which doesn't exist)
+        macd_improving = macd_hist > macd_hist_series.iloc[-2]
+        macd_worsening = macd_hist < macd_hist_series.iloc[-2]
         
         if rsi < 35 and macd_improving and close.iloc[-1] > close.iloc[-2]:
             s = _signal("BUY", "RSI_REVERSAL",
@@ -188,8 +189,8 @@ def _run_technical_strategies(symbol, df, quote):
     dist_support    = abs(ltp - support) / ltp
     dist_resistance = abs(ltp - resistance) / ltp
     if "SR_BOUNCE" in getattr(config, "ACTIVE_STRATEGIES", []):
-        macd_improving = macd_hist > df["macd_hist"].iloc[-2]
-        macd_worsening = macd_hist < df["macd_hist"].iloc[-2]
+        macd_improving = macd_hist > macd_hist_series.iloc[-2]
+        macd_worsening = macd_hist < macd_hist_series.iloc[-2]
         
         if dist_support < 0.015 and rsi < 55 and macd_improving:
             s = _signal("BUY", "SR_BOUNCE",

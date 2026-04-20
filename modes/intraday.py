@@ -292,24 +292,24 @@ def strategy_vwap_band(symbol: str, df: pd.DataFrame, ind: dict) -> List[dict]:
 
     # BUY: price near lower 2-sigma band
     if (ltp <= ind["vwap_l2"] * 1.002
-            and ind["rsi7"] < 30
+            and ind["rsi7"] < 38          # RSI(7) <38 is reliably oversold on 5m NSE candles
             and ind["vol_ratio"] >= 1.2):
-        confidence = min(85, 60 + (30 - ind["rsi7"]) + (ind["vol_ratio"] - 1) * 10)
+        confidence = min(85, 60 + (38 - ind["rsi7"]) * 0.8 + (ind["vol_ratio"] - 1) * 10)
         sig = _build_signal(
             symbol, "BUY", "VWAP_BAND",
-            f"VWAP -2sig reversal | RSI(7) {ind['rsi7']:.0f} | Vol {ind['vol_ratio']:.1f}x",
+            f"VWAP -2σ reversal | RSI(7) {ind['rsi7']:.0f} | Vol {ind['vol_ratio']:.1f}x",
             confidence, ind, ind["atr_5"],
         )
         signals.append(sig)
 
     # SELL: price near upper 2-sigma band
     if (ltp >= ind["vwap_u2"] * 0.998
-            and ind["rsi7"] > 70
+            and ind["rsi7"] > 62          # RSI(7) >62 is reliably overbought on 5m NSE candles
             and ind["vol_ratio"] >= 1.2):
-        confidence = min(85, 60 + (ind["rsi7"] - 70) + (ind["vol_ratio"] - 1) * 10)
+        confidence = min(85, 60 + (ind["rsi7"] - 62) * 0.8 + (ind["vol_ratio"] - 1) * 10)
         sig = _build_signal(
             symbol, "SELL", "VWAP_BAND",
-            f"VWAP +2sig reversal | RSI(7) {ind['rsi7']:.0f} | Vol {ind['vol_ratio']:.1f}x",
+            f"VWAP +2σ reversal | RSI(7) {ind['rsi7']:.0f} | Vol {ind['vol_ratio']:.1f}x",
             confidence, ind, ind["atr_5"],
         )
         signals.append(sig)
@@ -520,6 +520,18 @@ def analyze_stock_intraday(symbol: str) -> dict:
     ind = compute_indicators(today_df)
     result["indicators"] = ind
 
+    # Pattern Detection on 5-min candles (candlestick patterns are timeframe-agnostic)
+    pattern_result = None
+    pattern_name = ""
+    try:
+        from analysis.pattern_detector import detect_all_patterns
+        pattern_result = detect_all_patterns(symbol, today_df)
+        pattern_name = pattern_result.primary_pattern or ""
+        if pattern_name:
+            logger.debug(f"  {symbol}: pattern={pattern_name} ({pattern_result.direction} {pattern_result.reliability:.0%})")
+    except Exception as e:
+        logger.debug(f"  {symbol}: pattern error: {e}")
+
     # ML prediction (separate from rule-based)
     try:
         ml_result = predict_intraday(today_df, prev_day_df)
@@ -544,6 +556,34 @@ def analyze_stock_intraday(symbol: str) -> dict:
     if "ML_CONFLUENCE" in ACTIVE:
         ml_sigs = strategy_ml_confluence(symbol, today_df, ind, ml_result, rule_signals)
         rule_signals.extend(ml_sigs)
+
+    # Apply pattern boost/penalty to all signals
+    if pattern_result and pattern_result.primary_pattern:
+        for sig in rule_signals:
+            patt_dir = pattern_result.direction
+            patt_conf = pattern_result.reliability
+            sig_direction = sig["signal_type"]
+
+            if (sig_direction == "BUY" and patt_dir == "BULLISH") or \
+               (sig_direction == "SELL" and patt_dir == "BEARISH"):
+                # Pattern CONFIRMS the signal — boost by up to 8 points
+                boost = round(patt_conf * 8, 1)
+                sig["overall_score"] = min(95, sig["overall_score"] + boost)
+                sig["confidence"]    = min(95, sig["confidence"] + boost)
+                sig["pattern"] = pattern_name
+                sig["pattern_score"] = round(patt_conf * 100, 1)
+            elif (sig_direction == "BUY" and patt_dir == "BEARISH") or \
+                 (sig_direction == "SELL" and patt_dir == "BULLISH"):
+                # Pattern CONTRADICTS the signal — penalize by up to 6 points
+                penalty = round(patt_conf * 6, 1)
+                sig["overall_score"] = max(0, sig["overall_score"] - penalty)
+                sig["confidence"]    = max(0, sig["confidence"] - penalty)
+                sig["pattern"] = pattern_name + "_CONFLICT"
+                sig["pattern_score"] = round((1 - patt_conf) * 100, 1)
+            else:
+                # Neutral pattern — attach for display only
+                sig["pattern"] = pattern_name
+                sig["pattern_score"] = 50.0
 
     # Sort by confidence
     rule_signals.sort(key=lambda s: s.get("overall_score", 0), reverse=True)

@@ -405,19 +405,40 @@ def options():
     try:
         sys.path.insert(0, str(BASE_DIR / "modes"))
         from options import analyze_options
-        snap = analyze_options("NIFTY")
+        
+        nifty = analyze_options("NIFTY")
+        banknifty = analyze_options("BANKNIFTY")
+        
+        def snap_to_dict(snap, name):
+            return {
+                "symbol":              name,
+                "spot_price":          snap.spot_price,
+                "max_pain":            snap.max_pain,
+                "pcr":                 snap.pcr,
+                "pcr_state":           snap.pcr_state,
+                "support_from_oi":     snap.support_from_oi,
+                "resistance_from_oi":  snap.resistance_from_oi,
+                "signal":              snap.signal,
+                "unusual":             snap.unusual_activity,
+                "iv_atm":              snap.iv_atm,
+                "total_call_oi":       snap.total_call_oi,
+                "total_put_oi":        snap.total_put_oi,
+                "expiry":              snap.expiry,
+                "summary":             snap.summary,
+            }
+        
         return jsonify({
-            "max_pain": snap.max_pain,
-            "pcr": snap.pcr,
-            "pcr_state": snap.pcr_state,
-            "support_from_oi": snap.support_from_oi,
-            "resistance_from_oi": snap.resistance_from_oi,
-            "signal": snap.signal,
-            "unusual": snap.unusual_activity,
+            **snap_to_dict(nifty, "NIFTY"),     # top level for backwards compat
+            "nifty":     snap_to_dict(nifty, "NIFTY"),
+            "banknifty": snap_to_dict(banknifty, "BANKNIFTY"),
         })
     except Exception as e:
         return jsonify({"max_pain": 24050, "pcr": 1.24, "pcr_state": "BULLISH",
-                        "support_from_oi": 23900, "resistance_from_oi": 24200, "signal": "BULLISH"})
+                        "support_from_oi": 23900, "resistance_from_oi": 24200,
+                        "signal": "BULLISH", "spot_price": 24100,
+                        "nifty":     {"symbol": "NIFTY",    "pcr": 1.24, "signal": "BULLISH", "max_pain": 24050, "support_from_oi": 23900, "resistance_from_oi": 24200},
+                        "banknifty": {"symbol": "BANKNIFTY", "pcr": 0.98, "signal": "NEUTRAL", "max_pain": 51500, "support_from_oi": 51000, "resistance_from_oi": 52000},
+                        })
 
 
 # ════════════════════════════════════════
