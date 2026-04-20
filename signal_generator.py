@@ -139,8 +139,16 @@ def _run_technical_strategies(symbol, df, quote):
             "risk_reward": round(rr, 2), "return_pct": round(tp_p, 2), "risk_pct": round(sl_p, 2),
             "quantity": qty, "investment": round(investment, 2),
             "risk_amount": round(qty * risk_per_share, 2),
-            "trend": trend, "rsi": round(rsi, 1),
+            "trend": trend if 'trend' in locals() else 'UNKNOWN',
+            "rsi": round(rsi, 1) if 'rsi' in locals() else 50.0,
             "paper_trade": config.PAPER_TRADING,
+            "readings": {
+                "rsi": round(rsi, 1) if 'rsi' in locals() else None,
+                "macd_hist": round(macd_hist, 3) if 'macd_hist' in locals() else None,
+                "volume_surge": round(vol_ratio, 1) if 'vol_ratio' in locals() else None,
+                "trend": trend if 'trend' in locals() else None,
+                "price": round(ep, 2)
+            }
         }
 
     # ── Strategy 1: Breakout ──
