@@ -293,6 +293,20 @@ async function fetchNews() {
     }
 
     container.innerHTML = '';
+
+    function timeSince(dateString) {
+      if (!dateString) return '';
+      const d = new Date(dateString);
+      if (isNaN(d)) return '';
+      const seconds = Math.floor((new Date() - d) / 1000);
+      if (seconds < 60) return "Just now";
+      const m = Math.floor(seconds/60);
+      if (m < 60) return m + "m ago";
+      const h = Math.floor(m/60);
+      if (h < 24) return h + "h ago";
+      return Math.floor(h/24) + "d ago";
+    }
+
     articles.slice(0, 30).forEach(a => {
       const item = document.createElement('div');
       const sent = a.sentiment || 'neutral';
@@ -300,6 +314,7 @@ async function fetchNews() {
       item.innerHTML = `
         <div class="news-headline">${a.title}</div>
         <div class="news-meta">
+          <span class="news-source" style="color:var(--text3); font-weight:600">${timeSince(a.ts)}</span>
           <span class="news-source">${a.source || ''}</span>
           <span class="news-tag ${sent}">${sent.toUpperCase()}</span>
           ${a.symbols?.length ? `<span class="news-symbol">${a.symbols.join(' ')}</span>` : ''}

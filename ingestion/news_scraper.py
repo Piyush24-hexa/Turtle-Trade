@@ -16,6 +16,7 @@ from typing import Optional
 
 import feedparser
 import re
+import dateutil.parser
 
 logger = logging.getLogger(__name__)
 
@@ -237,11 +238,22 @@ def scrape_all_feeds(watchlist: list) -> dict:
                 title = entry.get("title", "")
                 summary = entry.get("summary", "")
                 text = f"{title}. {summary}"
-                pub_date = entry.get("published", datetime.now().isoformat())
+                # Parse actual publication date
+                raw_pub_date = entry.get("published", entry.get("updated", ""))
+                try:
+                    if raw_pub_date:
+                        actual_ts = dateutil.parser.parse(raw_pub_date).isoformat()
+                    else:
+                        actual_ts = datetime.now().isoformat()
+                except Exception:
+                    actual_ts = datetime.now().isoformat()
 
                 article_id = _article_id(title)
                 if article_id in _cache:
                     cached = _cache[article_id]
+                    # update timestamp in cache if it was somehow missing
+                    if "ts" not in cached:
+                        cached["ts"] = actual_ts
                     all_articles.append({**cached, "source": source})
                     continue
 
@@ -254,7 +266,7 @@ def scrape_all_feeds(watchlist: list) -> dict:
                     "sentiment": label,
                     "score": confidence,
                     "source": source,
-                    "ts": datetime.now().isoformat(),
+                    "ts": actual_ts,
                     "symbols": _find_symbols(text, watchlist),
                 }
 
