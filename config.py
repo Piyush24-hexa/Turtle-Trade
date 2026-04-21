@@ -34,6 +34,7 @@ ANGEL_TOTP_SECRET  = os.getenv("ANGEL_TOTP_SECRET")
 # ─────────────────────────────────────────
 TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_API_URL = os.getenv("TELEGRAM_API_URL", "https://api.telegram.org")
 
 
 # ─────────────────────────────────────────

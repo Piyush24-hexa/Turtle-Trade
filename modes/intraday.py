@@ -226,7 +226,13 @@ def _build_signal(symbol, signal_type, strategy, reason, confidence, ind, atr):
     rr = tp_pct / sl_pct if sl_pct > 0 else 0
 
     # Position sizing
-    capital = config.TOTAL_CAPITAL
+    try:
+        from execution.order_manager import get_available_capital
+        cap_data = get_available_capital()
+        capital = cap_data["available_capital"]
+    except Exception:
+        capital = config.TOTAL_CAPITAL
+        
     risk_amt = capital * config.RISK_PER_TRADE_PCT / 100
     risk_per_share = abs(ltp - sl)
     qty = max(1, int(risk_amt / risk_per_share)) if risk_per_share > 0 else 1

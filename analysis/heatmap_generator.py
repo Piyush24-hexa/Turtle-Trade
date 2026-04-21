@@ -103,3 +103,95 @@ def generate_crypto_heatmap(coin_data: dict) -> str:
     
     return filepath
 
+
+def generate_nse_heatmap(stock_data: dict) -> str:
+    """
+    Generate a heatmap grid for NSE watchlist based on 1D change %.
+    Returns the absolute path to the generated image.
+    stock_data format: {"RELIANCE": {"change_pct": 1.2, "ltp": 2900}, ...}
+    """
+    if not stock_data:
+        return ""
+    
+    stocks = list(stock_data.keys())
+    if not stocks:
+        return ""
+    
+    # Grid dimensions (e.g. 5 cols, N rows)
+    n = len(stocks)
+    cols = 5
+    rows = math.ceil(n / cols)
+    
+    fig, ax = plt.subplots(figsize=(cols * 2.5, rows * 1.5))
+    fig.patch.set_facecolor('#1e1e1e')
+    ax.set_facecolor('#1e1e1e')
+    
+    ax.set_xlim(0, cols)
+    ax.set_ylim(0, rows)
+    
+    # Hide axes
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+        
+    for i, stock in enumerate(stocks):
+        row = rows - 1 - (i // cols)
+        col = i % cols
+        
+        data = stock_data[stock]
+        pct = data.get("change_pct", 0)
+        price = data.get("ltp", 0)
+        
+        # Color mapping: dark red for <-3%, bright red for <0, bright green for >0, dark green for >3%
+        if pct < -3:
+            color = '#8b0000'
+        elif pct < 0:
+            color = '#ff4d4d'
+        elif pct == 0:
+            color = '#808080'
+        elif pct <= 3:
+            color = '#4dffa6'
+        else:
+            color = '#008b00'
+            
+        # Draw rectangle
+        rect = plt.Rectangle((col + 0.05, row + 0.05), 0.9, 0.9, 
+                             facecolor=color, edgecolor='#333333', linewidth=1, alpha=0.9)
+        ax.add_patch(rect)
+        
+        # Text styling
+        text_color = 'white' if pct < 0 else 'black'
+        
+        # Stock Name (truncate to max 10 chars)
+        display_name = stock[:10]
+        ax.text(col + 0.5, row + 0.65, display_name, 
+                color=text_color, ha='center', va='center', fontweight='bold', fontsize=11)
+        
+        # Percentage
+        sign = "+" if pct > 0 else ""
+        ax.text(col + 0.5, row + 0.45, f"{sign}{pct:.2f}%", 
+                color=text_color, ha='center', va='center', fontweight='bold', fontsize=14)
+                
+        # Price
+        price_str = f"₹{price:,.0f}"
+            
+        ax.text(col + 0.5, row + 0.25, price_str, 
+                color=text_color, ha='center', va='center', fontsize=10)
+
+    fig.suptitle(f"NSE Market Heatmap ({datetime.now().strftime('%Y-%m-%d %H:%M')})", 
+                 color='white', fontsize=16, fontweight='bold', y=0.98 + (0.02 if rows > 5 else 0))
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    
+    # Save Image
+    base_dir = os.path.dirname(os.path.dirname(__file__))
+    img_dir = os.path.join(base_dir, "signals", "images")
+    os.makedirs(img_dir, exist_ok=True)
+    
+    filename = f"nse_heatmap_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+    filepath = os.path.join(img_dir, filename)
+    plt.savefig(filepath, dpi=120, facecolor='#1e1e1e', edgecolor='none')
+    plt.close()
+    
+    return filepath

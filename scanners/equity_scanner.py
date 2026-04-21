@@ -156,6 +156,7 @@ def run_scan_cycle(dc, sg, tb, om, modules):
     # ── Scan each symbol ──
     all_signals = []
     ml_cache = []
+    nse_data = {}
 
     for symbol in config.WATCHLIST:
         try:
@@ -164,6 +165,9 @@ def run_scan_cycle(dc, sg, tb, om, modules):
             # Data collection
             df = dc.get_historical_data(symbol, days=15, interval=config.INTRADAY_INTERVAL)
             quote = dc.get_live_quote(symbol) or {}
+            if quote:
+                nse_data[symbol] = quote
+                
             if df is None or len(df) < 20:
                 logger.warning(f"    No data for {symbol}")
                 continue
@@ -244,7 +248,16 @@ def run_scan_cycle(dc, sg, tb, om, modules):
             f"Day P&L: Rs.{day_pnl:+.0f} | Win Rate: {stats.get('win_rate',0):.0f}%\n"
             f"Market: {getattr(market_cond,'market_state','?')} | VIX: {getattr(market_cond,'vix',0):.1f}"
         )
-        tb.send_message(summary)
+        try:
+            from analysis.heatmap_generator import generate_nse_heatmap
+            heatmap_img = generate_nse_heatmap(nse_data)
+            if heatmap_img:
+                tb.send_photo(heatmap_img, caption=summary)
+            else:
+                tb.send_message(summary)
+        except Exception as e:
+            logger.error(f"Failed to send NSE heatmap: {e}")
+            tb.send_message(summary)
 
     logger.info(f"Scan complete: {len(all_signals)} signals generated")
     return all_signals

@@ -344,6 +344,19 @@ def get_stats() -> dict:
     losses = [r["realized_pnl"] for r in rows if r["realized_pnl"] <= 0]
     total_pnl = sum(r["realized_pnl"] for r in rows)
 
+    pattern_stats = {}
+    for r in rows:
+        pat = r["pattern"]
+        if not pat:
+            continue
+        if pat not in pattern_stats:
+            pattern_stats[pat] = {"wins": 0, "losses": 0, "total": 0}
+        pattern_stats[pat]["total"] += 1
+        if r["realized_pnl"] > 0:
+            pattern_stats[pat]["wins"] += 1
+        else:
+            pattern_stats[pat]["losses"] += 1
+
     return {
         "total_trades":   len(rows),
         "wins":           len(wins),
@@ -353,6 +366,7 @@ def get_stats() -> dict:
         "avg_win":        round(sum(wins) / len(wins), 2) if wins else 0,
         "avg_loss":       round(sum(losses) / len(losses), 2) if losses else 0,
         "profit_factor":  round(sum(wins) / abs(sum(losses)), 2) if losses and wins else 0,
+        "pattern_stats":  pattern_stats,
     }
 
 
@@ -361,6 +375,27 @@ def _log_event(conn, order_id: int, event_type: str, old: str, new: str):
         INSERT INTO order_events (order_id, event_type, old_value, new_value)
         VALUES (?,?,?,?)
     """, (order_id, event_type, str(old), str(new)))
+
+
+def get_available_capital() -> dict:
+    """Calculate true dynamic available capital incorporating P&L and locked trades."""
+    import config
+    conn = _conn()
+    row_pnl = conn.execute("SELECT sum(realized_pnl) as tpnl FROM orders WHERE status='CLOSED'").fetchone()
+    tpnl = row_pnl["tpnl"] or 0.0
+
+    row_locked = conn.execute("SELECT sum(investment) as locked FROM orders WHERE status IN ('FILLED', 'PLACED')").fetchone()
+    locked = row_locked["locked"] or 0.0
+    conn.close()
+
+    base_cap = config.TOTAL_CAPITAL
+    return {
+        "base_capital": base_cap,
+        "realized_pnl": tpnl,
+        "locked_investment": locked,
+        "available_capital": base_cap + tpnl - locked
+    }
+
 
 
 if __name__ == "__main__":

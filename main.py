@@ -8,6 +8,9 @@ After hours: news + crypto scan every 30 min.
 """
 
 import sys
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
+
 import time
 import logging
 import threading

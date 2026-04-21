@@ -43,7 +43,7 @@ WEIGHTS = {
     "fundamental": 0.10,
 }
 
-MIN_SCORE_TO_SIGNAL = 62      # Only alert if score ≥ 62/100
+MIN_SCORE_TO_SIGNAL = 55      # Only alert if score ≥ 55/100
 MAX_OPEN_POSITIONS  = config.MAX_OPEN_POSITIONS
 
 # ─────────────────────────────────────────────────
@@ -120,16 +120,23 @@ def _run_technical_strategies(symbol, df, quote):
             tp = ep * (1 - tp_p/100)
         rr = tp_p / sl_p
 
+        try:
+            from execution.order_manager import get_available_capital
+            cap_data = get_available_capital()
+            dynamic_capital = cap_data["available_capital"]
+        except Exception:
+            dynamic_capital = config.TOTAL_CAPITAL
+
         if rr < config.MIN_RISK_REWARD:
             return None
 
-        risk_amount = config.TOTAL_CAPITAL * config.RISK_PER_TRADE_PCT / 100
+        risk_amount = dynamic_capital * config.RISK_PER_TRADE_PCT / 100
         risk_per_share = abs(ep - sl)
         qty = max(1, int(risk_amount / risk_per_share)) if risk_per_share > 0 else 1
         investment = qty * ep
 
-        if investment > config.TOTAL_CAPITAL * 0.55:
-            qty = max(1, int(config.TOTAL_CAPITAL * 0.50 / ep))
+        if investment > dynamic_capital * 0.55:
+            qty = max(1, int(dynamic_capital * 0.50 / ep))
             investment = qty * ep
 
         return {

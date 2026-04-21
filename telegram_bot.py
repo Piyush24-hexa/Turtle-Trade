@@ -11,6 +11,9 @@ Handles:
 import logging
 import asyncio
 import threading
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
 from datetime import datetime
 from typing import Optional
 
@@ -39,7 +42,7 @@ def send_message(text: str, parse_mode: str = "HTML") -> bool:
         print('='*60)
         return True
 
-    url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendMessage"
+    url = f"{config.TELEGRAM_API_URL}/bot{config.TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": config.TELEGRAM_CHAT_ID,
         "text": text,
@@ -68,7 +71,7 @@ def send_photo(image_path: str, caption: str = "") -> bool:
         logger.info(f"[console] Would send photo: {image_path}")
         return True
     try:
-        url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendPhoto"
+        url = f"{config.TELEGRAM_API_URL}/bot{config.TELEGRAM_TOKEN}/sendPhoto"
         with open(image_path, "rb") as f:
             resp = requests.post(
                 url,
@@ -195,7 +198,7 @@ def _get_updates() -> list:
     if config.TELEGRAM_TOKEN == "YOUR_BOT_TOKEN_HERE":
         return []
     global _last_update_id
-    url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/getUpdates"
+    url = f"{config.TELEGRAM_API_URL}/bot{config.TELEGRAM_TOKEN}/getUpdates"
     params = {"timeout": 30, "allowed_updates": ["message"]}
     if _last_update_id:
         params["offset"] = _last_update_id + 1

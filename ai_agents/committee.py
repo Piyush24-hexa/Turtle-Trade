@@ -247,7 +247,7 @@ Respond ONLY with a raw JSON object (no markdown, no code fences):
                 {"role": "system", "content": "You are a trading firm AI committee. Output only raw JSON, no markdown."},
                 {"role": "user", "content": system_prompt}
             ],
-            temperature=0.5,
+            temperature=0.2,
             max_tokens=3000
         )
 

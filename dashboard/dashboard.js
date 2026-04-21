@@ -28,6 +28,17 @@ function refreshAll() {
   fetchML();
   fetchAltMode();
   fetchTicker();
+  fetchPortfolio();
+}
+
+async function fetchPortfolio() {
+  try {
+    const data = await get('/api/portfolio');
+    const capEl = document.getElementById('pos-capital');
+    if (capEl) {
+      capEl.textContent = 'PAPER CAPITAL: ₹' + fmt(data.available_capital, 0);
+    }
+  } catch(e) { }
 }
 
 // ═══════════════════════════════════════
@@ -222,6 +233,15 @@ function renderSignalCard(sig) {
       <span class="sig-sl">▼ ${curr}${fmt(sig.stop_loss)}</span>
     </div>
     <div class="sig-strategy">${sig.strategy || ''} ${sig.pattern ? '| ' + sig.pattern.replace(/_/g,' ') : ''}</div>
+    ${(!sig.status || sig.status === 'PENDING') ? `
+    <button onclick="event.stopPropagation(); executeOrder(${sig.id})" class="execute-btn" style="margin-top:10px; width:100%; padding:8px; background:var(--accent); color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:11px;">
+      🚀 APPROVE & MONITOR PAPER TRADE
+    </button>
+    ` : `
+    <button disabled style="margin-top:10px; width:100%; padding:8px; background:var(--bg-dark); color:var(--text3); border:none; border-radius:4px; font-weight:bold; cursor:not-allowed; font-size:11px;">
+      ${sig.status}
+    </button>
+    `}
   `;
 
   // Phase 4: AI Committee Verdict Badge & Debate Drawer
@@ -371,6 +391,37 @@ async function fetchRisk() {
     document.getElementById('risk-trades').textContent = (d.open_trades || 0) + ' / 2';
     document.getElementById('pos-count').textContent = (d.open_trades || 0) + ' positions';
   } catch(e) { /* demo fallback below */ }
+
+  try {
+    const d = await get('/performance');
+    const riskPanel = document.getElementById('risk-panel');
+    let patternHtml = '';
+    if (d.pattern_stats) {
+      patternHtml = Object.entries(d.pattern_stats).map(([pat, stat]) => {
+        const wr = stat.total > 0 ? (stat.wins / stat.total * 100).toFixed(0) : 0;
+        return `<div class="risk-row" style="font-size:10px;"><span style="color:var(--accent)">${pat.replace(/_/g,' ')}</span> <span class="risk-val" style="color:${wr>=50?'var(--green)':'var(--red)'}">${wr}% Win (${stat.wins}/${stat.total})</span></div>`;
+      }).join('');
+    }
+
+    if (patternHtml) {
+      const pattContainer = document.getElementById('pattern-stats-container');
+      if (pattContainer) {
+        pattContainer.innerHTML = patternHtml;
+      } else {
+        const newPanel = document.createElement('div');
+        newPanel.innerHTML = `
+          <div class="panel-header" style="margin-top:12px">
+            <span class="panel-icon">🎯</span>
+            <span class="panel-title">PATTERN STATS</span>
+          </div>
+          <div class="risk-panel" id="pattern-stats-container">
+            ${patternHtml}
+          </div>
+        `;
+        riskPanel.parentNode.insertBefore(newPanel, riskPanel.nextSibling);
+      }
+    }
+  } catch(e) { console.error('Error fetching pattern stats', e); }
 }
 
 // ═══════════════════════════════════════
@@ -551,6 +602,28 @@ async function fetchOrders(container, countEl) {
   }
 }
 
+async function fetchPositions() {
+  try {
+    const data = await get('/orders/today');
+    const openOrders = data.filter(o => ['PLACED', 'FILLED'].includes(o.status));
+    
+    const container = document.getElementById('positions-panel');
+    const countEl = document.getElementById('pos-count');
+    
+    if (countEl) countEl.textContent = openOrders.length + ' active';
+    
+    if (openOrders.length) {
+      container.innerHTML = '';
+      openOrders.forEach(o => container.appendChild(renderOrderRow(o)));
+    } else {
+      container.innerHTML = '<div class="empty-state">No active trades — verify and execute a pending signal to start paper trading.</div>';
+    }
+  } catch(e) {
+    const countEl = document.getElementById('pos-count');
+    if (countEl) countEl.textContent = '0 active';
+  }
+}
+
 function renderOrderRow(order) {
   const row = document.createElement('div');
   const isBuy = ['BUY','BUY_CALL'].includes(order.signal_type);
@@ -663,8 +736,31 @@ function showSignalModal(sig) {
     <div style="margin-top:12px; padding:6px 10px; background:rgba(255,214,10,.1); border-radius:6px; font-size:10px; color:var(--yellow);">
       ⚠️ This is a ${sig.paper_trade !== false ? 'PAPER TRADE signal' : 'LIVE TRADE signal'}. Always verify before placing an order.
     </div>
+    ${(!sig.status || sig.status === 'PENDING') ? `
+    <button onclick="executeOrder(${sig.id})" style="margin-top:12px; width:100%; padding:12px; background:var(--accent); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">
+      APPROVE & EXECUTE PAPER TRADE
+    </button>
+    ` : `
+    <button disabled style="margin-top:12px; width:100%; padding:12px; background:var(--bg-dark); color:var(--text3); border:none; border-radius:6px; font-weight:bold; cursor:not-allowed;">
+      ${sig.status}
+    </button>
+    `}
   `;
   document.getElementById('modal-overlay').classList.add('open');
+}
+
+async function executeOrder(id) {
+  try {
+    const res = await post('/api/orders/' + id + '/execute', {});
+    if(res.status === 'success') {
+      closeModal();
+      refreshAll();
+    } else {
+      alert("Error: " + res.message);
+    }
+  } catch(e) {
+    alert("Execution error: " + e.message);
+  }
 }
 
 function closeModal() {
@@ -699,6 +795,16 @@ function initTabs() {
 // ═══════════════════════════════════════
 async function get(path) {
   const res = await fetch(API + path);
+  if (!res.ok) throw new Error(res.status);
+  return res.json();
+}
+
+async function post(path, body) {
+  const res = await fetch(API + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
   if (!res.ok) throw new Error(res.status);
   return res.json();
 }

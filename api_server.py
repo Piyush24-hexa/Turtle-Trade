@@ -518,8 +518,31 @@ def close_order(order_id):
         pnl = _close(order_id, exit_price, exit_reason)
         return jsonify({"success": True, "pnl": pnl, "order_id": order_id})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"success": False, "error": str(e)})
 
+@app.route("/api/orders/<int:order_id>/execute", methods=["POST"])
+def manual_execute(order_id):
+    try:
+        from execution.order_manager import fill_order, get_available_capital
+        import data_collector as dc
+        conn = get_db()
+        order = conn.execute("SELECT * FROM orders WHERE id=? AND status='PENDING'", (order_id,)).fetchone()
+        conn.close()
+        if not order:
+            return jsonify({"status": "error", "message": "Order not found or already executed"}), 404
+        
+        # Enforce Capital Rules
+        cap_stats = get_available_capital()
+        if cap_stats["available_capital"] < order["investment"]:
+            return jsonify({"status": "error", "message": f"Insufficient Capital. Require {int(order['investment'])}, Available: {int(cap_stats['available_capital'])}"}), 400
+
+        quote = dc.get_live_quote(order["symbol"])
+        current_price = quote["ltp"] if quote else order["entry_price"]
+        
+        fill_order(order_id, current_price)
+        return jsonify({"status": "success", "message": f"Order Executed at {current_price}"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/orders/news")
 def news_signals():
@@ -646,6 +669,14 @@ def api_pnl():
         return jsonify({"pnl": get_daily_pnl(), "date": date.today().isoformat()})
     except Exception:
         return jsonify({"pnl": 0.0, "date": date.today().isoformat()})
+
+@app.route("/api/portfolio")
+def api_portfolio():
+    try:
+        from execution.order_manager import get_available_capital
+        return jsonify(get_available_capital())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/health")
 def api_health():
